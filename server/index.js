@@ -207,10 +207,6 @@ app.get("/api/leaderboard", requireJuryAccess, async (_req, res) => {
   return res.json({ leaderboardByDomain });
 });
 
-if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-export default app;
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
