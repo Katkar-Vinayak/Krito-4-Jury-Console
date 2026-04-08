@@ -1,12 +1,7 @@
 import { supabase } from "./supabaseClient";
 
-const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS || "")
-  .split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
-
 export const signInWithGoogle = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
+  const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: window.location.origin
@@ -16,8 +11,6 @@ export const signInWithGoogle = async () => {
   if (error) {
     throw error;
   }
-
-  return data;
 };
 
 export const signOutUser = async () => {
@@ -32,7 +25,12 @@ export const getSession = async () => {
   if (error) {
     throw error;
   }
-  return data.session || null;
+  return data?.session || null;
+};
+
+export const getAccessToken = async () => {
+  const session = await getSession();
+  return session?.access_token || "";
 };
 
 export const validateUserAccess = async (email) => {
@@ -40,25 +38,16 @@ export const validateUserAccess = async (email) => {
     return false;
   }
 
-  const normalized = email.trim().toLowerCase();
-  if (allowedEmails.includes(normalized)) {
-    return true;
-  }
-
+  const normalizedEmail = email.toLowerCase();
   const { data, error } = await supabase
     .from("allowed_users")
-    .select("id")
-    .eq("email", normalized)
+    .select("email")
+    .eq("email", normalizedEmail)
     .maybeSingle();
 
   if (error) {
     throw error;
   }
 
-  return Boolean(data);
-};
-
-export const getAccessToken = async () => {
-  const session = await getSession();
-  return session?.access_token || null;
+  return Boolean(data?.email);
 };
