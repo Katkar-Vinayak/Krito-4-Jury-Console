@@ -110,83 +110,97 @@ app.get("/api/teams", requireJuryAccess, async (req, res) => {
   return res.json({ teams: data || [] });
 });
 
-app.post("/api/scores", requireJuryAccess, async (req, res) => {
-  const { teamId, roundNumber, scores, review } = req.body;
 
-  if (!teamId || !scores || !Number.isInteger(roundNumber) || roundNumber < 1) {
+app.post("/api/leaderboard", requireJuryAccess, async (req, res) => {
+  console.log("/api/leaderboard POST payload:", req.body);
+  const { teamId, roundNumber, leaderboard, review } = req.body;
+
+  if (!teamId || !leaderboard || !Number.isInteger(roundNumber) || (roundNumber !== 1 && roundNumber !== 2)) {
+    console.error("Validation failed: missing teamId, leaderboard, or roundNumber", req.body);
     return res.status(400).json({
-      error: "TeamId, roundNumber, and scores are required."
+      error: "TeamId, roundNumber (1 or 2), and leaderboard are required."
     });
   }
 
+  // Select table based on roundNumber
+  const tableName = roundNumber === 1 ? "scores_round1" : "scores_round2";
+
+  // Check if score already exists for this team in this round
   const { data: existing, error: existingError } = await supabase
-    .from("scores")
+    .from(tableName)
     .select("team_id")
     .eq("team_id", teamId)
-    .eq("round_number", roundNumber)
     .maybeSingle();
 
   if (existingError) {
+    console.error("DB error checking existing score:", existingError);
     return res.status(500).json({ error: existingError.message });
   }
 
   if (existing) {
+    console.warn("Score already exists for team/round", { teamId, roundNumber });
     return res.status(409).json({ error: "Score exists. Admin key required to edit." });
   }
 
-  if (roundNumber > 1) {
+  // For round 2, check that round 1 exists
+  if (roundNumber === 2) {
     const { data: previousRound, error: previousRoundError } = await supabase
-      .from("scores")
+      .from("scores_round1")
       .select("team_id")
       .eq("team_id", teamId)
-      .eq("round_number", roundNumber - 1)
       .maybeSingle();
 
     if (previousRoundError) {
+      console.error("DB error checking previous round:", previousRoundError);
       return res.status(500).json({ error: previousRoundError.message });
     }
 
     if (!previousRound) {
+      console.warn(`Round 1 must be evaluated before Round 2.`, { teamId });
       return res.status(400).json({
-        error: `Round ${roundNumber - 1} must be evaluated before Round ${roundNumber}.`
+        error: `Round 1 must be evaluated before Round 2.`
       });
     }
   }
 
   const payload = {
     team_id: teamId,
-    round_number: roundNumber,
     created_by_key: req.user.email,
-    review: String(review || "").trim()
+    review: String(review || "").trim(),
+    updated_at: null
   };
+
   for (const field of CRITERIA_FIELDS) {
-    const value = Number(scores[field]);
+    const value = Number(leaderboard[field]);
     if (Number.isNaN(value) || value < 0 || value > 10) {
+      console.error(`Invalid score for ${field}:`, value);
       return res.status(400).json({ error: `Invalid score for ${field}.` });
     }
     payload[field] = value;
   }
 
-  const { error: insertError } = await supabase.from("scores").insert(payload);
+  const { error: insertError } = await supabase.from(tableName).insert(payload);
 
   if (insertError) {
+    console.error("DB error inserting score:", insertError);
     return res.status(500).json({ error: insertError.message });
   }
 
+  console.log("Score inserted successfully for team/round", { teamId, roundNumber });
   return res.json({ ok: true });
 });
 
-app.get("/api/scores/teams", requireJuryAccess, async (req, res) => {
+app.get("/api/leaderboard/teams", requireJuryAccess, async (req, res) => {
   const roundNumber = Number.parseInt(req.query.roundNumber || "1", 10);
 
-  if (!Number.isInteger(roundNumber) || roundNumber < 1) {
-    return res.status(400).json({ error: "Valid roundNumber is required." });
+  if (roundNumber !== 1 && roundNumber !== 2) {
+    return res.status(400).json({ error: "Valid roundNumber (1 or 2) is required." });
   }
 
+  const tableName = roundNumber === 1 ? "scores_round1" : "scores_round2";
   const { data, error } = await supabase
-    .from("scores")
-    .select("team_id")
-    .eq("round_number", roundNumber);
+    .from(tableName)
+    .select("team_id");
 
   if (error) {
     return res.status(500).json({ error: error.message });

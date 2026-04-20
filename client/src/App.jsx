@@ -51,7 +51,7 @@ const styles = `
 
 /* Show message on hover */
 .criteria-item.disabled:hover::after {
-  content: "Blocked: Round Submitted";
+  content: "Already submitted";
   position: absolute;
   top: -25px;
   right: 0;
@@ -220,7 +220,7 @@ const App = () => {
     // Fetching submission status for each round from Backend API
     const roundEntries = await Promise.all(
       ROUNDS.map(async (roundNumber) => {
-        const data = await fetchJson(`${API_BASE}/scores/teams?roundNumber=${roundNumber}`);
+        const data = await fetchJson(`${API_BASE}/leaderboard/teams?roundNumber=${roundNumber}`);
         const submittedMap = (data.teamIds || []).reduce((acc, teamId) => {
           acc[teamId] = true;
           return acc;
@@ -296,9 +296,9 @@ const App = () => {
 
     try {
       // Submitting to Backend API
-      await fetchJson(`${API_BASE}/scores`, {
+      await fetchJson(`${API_BASE}/leaderboard`, {
         method: "POST",
-        body: JSON.stringify({ teamId, roundNumber, scores: payloadScores, review })
+        body: JSON.stringify({ teamId, roundNumber, leaderboard: payloadScores, review })
       });
 
       await loadLeaderboard();
