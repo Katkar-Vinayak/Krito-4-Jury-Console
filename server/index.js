@@ -18,7 +18,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const app = express();
-import cors from "cors";
 app.use(cors({
   origin: ["http://localhost:5201", "https://your-frontend-domain.com"], // add all allowed origins here
   credentials: true,
