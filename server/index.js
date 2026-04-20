@@ -111,11 +111,11 @@ app.get("/api/teams", requireJuryAccess, async (req, res) => {
 });
 
 app.post("/api/scores", requireJuryAccess, async (req, res) => {
-  const { teamId, scores } = req.body;
+  const { teamId, roundNumber, scores, review } = req.body;
 
-  if (!teamId || !scores) {
+  if (!teamId || !scores || !Number.isInteger(roundNumber) || roundNumber < 1) {
     return res.status(400).json({
-      error: "TeamId and scores are required."
+      error: "TeamId, roundNumber, and scores are required."
     });
   }
 
@@ -123,6 +123,7 @@ app.post("/api/scores", requireJuryAccess, async (req, res) => {
     .from("scores")
     .select("team_id")
     .eq("team_id", teamId)
+    .eq("round_number", roundNumber)
     .maybeSingle();
 
   if (existingError) {
@@ -133,10 +134,34 @@ app.post("/api/scores", requireJuryAccess, async (req, res) => {
     return res.status(409).json({ error: "Score exists. Admin key required to edit." });
   }
 
-  const payload = { team_id: teamId, created_by_key: req.user.email };
+  if (roundNumber > 1) {
+    const { data: previousRound, error: previousRoundError } = await supabase
+      .from("scores")
+      .select("team_id")
+      .eq("team_id", teamId)
+      .eq("round_number", roundNumber - 1)
+      .maybeSingle();
+
+    if (previousRoundError) {
+      return res.status(500).json({ error: previousRoundError.message });
+    }
+
+    if (!previousRound) {
+      return res.status(400).json({
+        error: `Round ${roundNumber - 1} must be evaluated before Round ${roundNumber}.`
+      });
+    }
+  }
+
+  const payload = {
+    team_id: teamId,
+    round_number: roundNumber,
+    created_by_key: req.user.email,
+    review: String(review || "").trim()
+  };
   for (const field of CRITERIA_FIELDS) {
     const value = Number(scores[field]);
-    if (Number.isNaN(value)) {
+    if (Number.isNaN(value) || value < 0 || value > 10) {
       return res.status(400).json({ error: `Invalid score for ${field}.` });
     }
     payload[field] = value;
@@ -151,8 +176,17 @@ app.post("/api/scores", requireJuryAccess, async (req, res) => {
   return res.json({ ok: true });
 });
 
-app.get("/api/scores/teams", requireJuryAccess, async (_req, res) => {
-  const { data, error } = await supabase.from("scores").select("team_id");
+app.get("/api/scores/teams", requireJuryAccess, async (req, res) => {
+  const roundNumber = Number.parseInt(req.query.roundNumber || "1", 10);
+
+  if (!Number.isInteger(roundNumber) || roundNumber < 1) {
+    return res.status(400).json({ error: "Valid roundNumber is required." });
+  }
+
+  const { data, error } = await supabase
+    .from("scores")
+    .select("team_id")
+    .eq("round_number", roundNumber);
 
   if (error) {
     return res.status(500).json({ error: error.message });
