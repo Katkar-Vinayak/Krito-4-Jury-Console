@@ -35,6 +35,7 @@ begin
     using (email = auth.email());
   end if;
 end $$;
+
 create table if not exists scores_round1 (
   team_id uuid not null references teams(id) on delete cascade,
   review text not null default '',
